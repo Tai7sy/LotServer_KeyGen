@@ -10,17 +10,28 @@
 global $key, $lic_len;
 $key = 'apx-section1';
 $lic_len = 0xA0;
-
-if($argc <= 1){
-    die("
+if (php_sapi_name() === 'cli') {
+    if ($argc <= 1) {
+        die("
     Usage: 
         php keygen.php [mac]
         For example, php keygen.php 00:00:00:00:00:00
     ");
+    }
+    $mac = $argv[1];
+} else {
+    if (!isset($_GET['mac'])) {
+        die("Please input a mac address.\n");
+    }
+    $mac = $_GET['mac'];
 }
+
+if (strlen($mac) !== 17) // 00:00:00:00:00:00
+    die("Invalid mac address\n");
+
 $lic_path = '.template.lic';
 if (!is_file($lic_path)) {
-    echo "\n\nPlease give a template lic file! \n\n\n";
+    die("Please give a template lic file! \n");
 }
 $buffer = file_get_contents($lic_path);
 if (strlen($buffer) !== $lic_len) {
@@ -33,17 +44,25 @@ if (strlen($buffer) !== $lic_len) {
 $lic_info = decode_lic($buffer, false);
 
 // hack it
-modify_mac($lic_info, $argv[1]);
+modify_mac($lic_info, $mac);
 modify_expire($lic_info, 2099, 12, 31);
 
 // encrypt and output
 $modified_lic = str_repeat(chr(0), $lic_len);
 APX_ProtEncrypt($key, strlen($key), $key, strlen($key), $lic_info, $lic_len, $modified_lic);
-file_put_contents('out.lic', $modified_lic);
-echo "\nHexView:\n";
-hex_dump($modified_lic);
-decode_lic($modified_lic);
-echo "\n----> Output: out.lic\n";
+if (php_sapi_name() === 'cli') {
+    file_put_contents('out.lic', $modified_lic); // 将MAC地址写到文件
+    echo "\nHexView:\n";
+    hex_dump($modified_lic);
+    decode_lic($modified_lic);
+    echo "\n----> Output: out.lic\n";
+} else {
+    header('Content-type:application/octet-stream');
+    header('Accept-Ranges:bytes');
+    header('Accept-Length:' . $lic_len);
+    header('Content-Disposition: attachment; filename=out.lic');
+    echo $modified_lic;
+}
 
 function decode_lic($buffer, $output = true)
 {
@@ -64,7 +83,7 @@ function decode_lic($buffer, $output = true)
     00 00 00 00 00 00 00 00 3e ed 8f 03 00 00 00 00
     */
 
-    if($output){
+    if ($output) {
         echo "License: " . substr($lic_info, 0x40, 0x10) . "\n";
         echo "MaxSession: " . unpack('V', substr($lic_info, 0x70, 4))[1] . "\n";
         echo "MaxTcpAccSession: " . unpack('V', substr($lic_info, 0x74, 4))[1] . "\n";
@@ -140,9 +159,10 @@ function modify_mac(&$lic_info, $mac, $ip = '172.27.0.14')
         $hash2 = dechex(unpack('V', $hash2)[1]);
     }
 
-    // echo "(license " . $license . $hash2 . ")\n"; // 不校验IP ~~~
-    echo "(license " . $license . ")\n";
-
+    if (php_sapi_name() === 'cli') {
+        // echo "(license " . $license . $hash2 . ")\n"; // 不校验IP ~~~
+        echo "(license " . $license . ")\n";
+    }
     for ($i = 0x40; $i < 0x50; $i++) {
         $lic_info{$i} = $license{$i - 0x40};
     }
