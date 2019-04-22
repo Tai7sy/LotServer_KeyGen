@@ -128,7 +128,7 @@ function modify_mac(&$lic_info, $mac, $ip = '172.27.0.14')
 
         $license = '';
         for ($i = 0; $i < 0x8; $i++) {
-            $calc = ord($mac_hash[$i]) + ord($mac_hash[$i + 8]);
+            $calc = (ord($mac_hash[$i]) + ord($mac_hash[$i + 8])) & 0xFF;
             $license .= sprintf("%02X", $calc);
         }
 
@@ -142,6 +142,7 @@ function modify_mac(&$lic_info, $mac, $ip = '172.27.0.14')
 
     // echo "(license " . $license . $hash2 . ")\n"; // 不校验IP ~~~
     echo "(license " . $license . ")\n";
+
     for ($i = 0x40; $i < 0x50; $i++) {
         $lic_info{$i} = $license{$i - 0x40};
     }
