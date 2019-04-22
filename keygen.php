@@ -43,7 +43,7 @@ file_put_contents('out.lic', $modified_lic);
 echo "\nHexView:\n";
 hex_dump($modified_lic);
 decode_lic($modified_lic);
-echo "\n----> Output: out.lic";
+echo "\n----> Output: out.lic\n";
 
 function decode_lic($buffer, $output = true)
 {
