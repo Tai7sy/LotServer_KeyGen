@@ -16,15 +16,16 @@ function __ROL4__($decimal, $bits)
     );
 }
 
+function _INT32($val)
+{
+    return $val & 0xFFFFFFFF;
+}
+
 function _DWORD_TO_BYTES($ARR)
 {
     $bytes = '';
     for ($i = 0; $i < count($ARR); $i++) {
-        $bin = hex2bin(dechex($ARR[$i]));
-        $bytes .= $bin{3};
-        $bytes .= $bin{2};
-        $bytes .= $bin{1};
-        $bytes .= $bin{0};
+        $bytes .= pack('V', $ARR[$i]);
     }
     return $bytes;
 }
@@ -45,7 +46,7 @@ function APX_ProtInitContext($Id, $IdLen, $Key, $KeyLen, &$ProtContext)
                 do {
                     $v9 = ord($Id[$v8]);
                     $v10 = 8 * $v8++;
-                    $v7 |= $v9 << $v10;
+                    $v7 = _INT32($v7 | ($v9 << $v10));
                 } while ($v8 < $IdLen && $v8 <= 3);
             }
             if ($IdLen <= 3)
@@ -58,15 +59,15 @@ function APX_ProtInitContext($Id, $IdLen, $Key, $KeyLen, &$ProtContext)
                 do {
                     $v15 = ord($v11[$v14]);
                     $v16 = 8 * $v14++;
-                    $v13 |= $v15 << $v16;
+                    $v13 = _INT32($v13 | ($v15 << $v16));
                 } while ($v12 > $v14 && $v14 <= 3);
             } else {
                 $v13 = 0;
             }
             if ($v12 <= 3)
                 goto LABEL_18;
-            $v6 += $v7;
-            $ProtContext[1] += $v13;
+            $v6 = _INT32($v6 + $v7);
+            $ProtContext[1] = _INT32($ProtContext[1] + $v13);
             $IdLen = $v12 - 4;
             $ProtContext[0] = $v6;
             if (!$IdLen)
@@ -75,8 +76,8 @@ function APX_ProtInitContext($Id, $IdLen, $Key, $KeyLen, &$ProtContext)
         }
         $v13 = 0;
         LABEL_18:
-        $ProtContext[1] += $v13;
-        $ProtContext[0] = $v6 + $v7;
+        $ProtContext[1] = _INT32($ProtContext[1] + $v13);
+        $ProtContext[0] = _INT32($v6 + $v7);
     }
     LABEL_19:
     $v17 = $result;
@@ -88,9 +89,9 @@ function APX_ProtInitContext($Id, $IdLen, $Key, $KeyLen, &$ProtContext)
             do {
                 $v21 = ord($Key[$v18 + $v20]);
                 $v22 = 8 * $v20++;
-                $v19 |= $v21 << $v22;
+                $v19 = _INT32($v19 | ($v21 << $v22));
             } while ($v20 < $result && $v20 <= 3);
-            $v23 = $v19 - 1515870811;
+            $v23 = _INT32($v19 - 1515870811);
         } else {
             $v23 = -1515870811;
         }
@@ -101,25 +102,25 @@ function APX_ProtInitContext($Id, $IdLen, $Key, $KeyLen, &$ProtContext)
 
     // echo "5ee6dfca 74636573 d31e1606 1a090b18 d714150e a5a5a5a5 a5a5a5a5 a5a5a5a5 a5a5a5a5 a5a5a5a5 \n";
     // $bytes = _DWORD_TO_BYTES($ProtContext);
-    // hex_dump($bytes,strlen($bytes));
+    // hex_dump($bytes, strlen($bytes));
     return $result;
 }
 
 function APX_ProtUpdateContext(&$ProtContext)
 {
-    $edx = $ProtContext[1] + 0x74656E78;
-    $_tmp = $ProtContext[0] + 0x45505041;
+    $edx = _INT32($ProtContext[1] + 0x74656E78);
+    $_tmp = _INT32($ProtContext[0] + 0x45505041);
 
-    $v2 = $ProtContext[2] + __ROL4__($_tmp ^ $edx, $edx & 0x1F);
-    $v3 = $ProtContext[3] + __ROL4__($edx ^ $v2, $v2 & 0x1F);
+    $v2 = _INT32($ProtContext[2] + __ROL4__($_tmp ^ $edx, $edx & 0x1F));
+    $v3 = _INT32($ProtContext[3] + __ROL4__($edx ^ $v2, $v2 & 0x1F));
 
-    $v4 = $ProtContext[4] + __ROL4__($v3 ^ $v2, $v3 & 0x1F);
-    $v5 = $ProtContext[5] + __ROL4__($v4 ^ $v3, $v4 & 0x1F);
-    $v6 = $ProtContext[6] + __ROL4__($v5 ^ $v4, $v5 & 0x1F);
-    $v7 = $ProtContext[7] + __ROL4__($v6 ^ $v5, $v6 & 0x1F);
-    $result = $ProtContext[8] + __ROL4__($v7 ^ $v6, $v7 & 0x1F);
-    $ProtContext[0] = $result;
-    $ProtContext[1] = $ProtContext[9] + __ROL4__($result ^ $v7, $result & 0x1F);
+    $v4 = _INT32($ProtContext[4] + __ROL4__($v3 ^ $v2, $v3 & 0x1F));
+    $v5 = _INT32($ProtContext[5] + __ROL4__($v4 ^ $v3, $v4 & 0x1F));
+    $v6 = _INT32($ProtContext[6] + __ROL4__($v5 ^ $v4, $v5 & 0x1F));
+    $v7 = _INT32($ProtContext[7] + __ROL4__($v6 ^ $v5, $v6 & 0x1F));
+    $result = _INT32($ProtContext[8] + __ROL4__($v7 ^ $v6, $v7 & 0x1F));
+    $ProtContext[0] = _INT32($result);
+    $ProtContext[1] = _INT32($ProtContext[9] + __ROL4__($result ^ $v7, $result & 0x1F));
 
     return $result;
 }
@@ -142,11 +143,11 @@ function APX_ProtDecrypt($Id, $IdLen, $Key, $KeyLen, $CipherText, $CipherTextLen
             do {
                 $v13 = $v12;
                 $v14 = 8 * $v12++;
-                $v11 |= ord($CipherText{$v7 + $v13}) << $v14;
+                $v11 = _INT32($v11 | (ord($CipherText{$v7 + $v13}) << $v14));
             } while ($v12 < $v8 && $v12 <= 3);
             APX_ProtUpdateContext($ProtContext);
             $v15 = 0;
-            $v16 = $v11 - $i - $ProtContext[0];
+            $v16 = _INT32($v11 - $i - $ProtContext[0]);
             do {
                 $v17 = $v15++;
                 $OutPlainText{$v9 + $v17} = chr($v16 & 0xFF);
@@ -176,11 +177,11 @@ function APX_ProtEncrypt($Id, $IdLen, $Key, $KeyLen, $PlainText, $PlainTextLen, 
             do {
                 $v13 = $v12;
                 $v14 = 8 * $v12++;
-                $v11 |= ord($PlainText{$v7 + $v13}) << $v14;
+                $v11 = _INT32($v11 | (ord($PlainText{$v7 + $v13}) << $v14));
             } while ($v12 < $v8 && $v12 <= 3);
             APX_ProtUpdateContext($ProtContext);
             $v15 = 0;
-            $v10 += $v11 + $ProtContext[0];
+            $v10 = _INT32($v10 + $v11 + $ProtContext[0]);
             $v16 = $v10;
             do {
                 $v17 = $v15++;
@@ -200,7 +201,7 @@ function APX_ProtEncrypt($Id, $IdLen, $Key, $KeyLen, $PlainText, $PlainTextLen, 
 function hex_dump($data, $len = false)
 {
     if ($len === false) {
-        $len = count($data);
+        $len = strlen($data);
     }
     for ($i = 0; $i < $len; $i++) {
         $out = dechex(ord($data[$i]));
@@ -222,7 +223,7 @@ function view_lic($buffer)
     global $key, $lic_len;
     $licInfo = str_repeat(chr(0), $lic_len);
     APX_ProtDecrypt($key, strlen($key), $key, strlen($key), $buffer, $lic_len, $licInfo);
-    // hex_dump($licInfo, $lic_len);
+    hex_dump($licInfo, $lic_len);
     /*
     8e 4c 15 ca e9 0d d0 23 da 24 13 41 69 09 1d 30
     bc d4 2a 98 df 3c 45 8c 23 49 38 d3 b6 4f f4 dc
@@ -252,7 +253,6 @@ function view_lic($buffer)
 
 
 $lic_path = 'apx_01_23.lic'; // replace your lic here
-
 $buffer = file_get_contents($lic_path);
 if (strlen($buffer) !== $lic_len) {
     echo("此程序只支持最新LotServer (2019-04-22)\n");
@@ -270,5 +270,5 @@ $licInfo{0x60} = pack('v', $year)[0];
 $licInfo{0x61} = pack('v', $year)[1];
 APX_ProtEncrypt($key, strlen($key), $key, strlen($key), $licInfo, $lic_len, $modified_lic);
 
-file_put_contents('out.lic', $modified_lic);
+file_put_contents('out2.lic', $modified_lic);
 view_lic($modified_lic);
