@@ -223,7 +223,7 @@ function view_lic($buffer)
     global $key, $lic_len;
     $licInfo = str_repeat(chr(0), $lic_len);
     APX_ProtDecrypt($key, strlen($key), $key, strlen($key), $buffer, $lic_len, $licInfo);
-    hex_dump($licInfo, $lic_len);
+    // hex_dump($licInfo, $lic_len);
     /*
     8e 4c 15 ca e9 0d d0 23 da 24 13 41 69 09 1d 30
     bc d4 2a 98 df 3c 45 8c 23 49 38 d3 b6 4f f4 dc
@@ -252,7 +252,7 @@ function view_lic($buffer)
 }
 
 
-$lic_path = 'apx_01_23.lic'; // replace your lic here
+$lic_path = '/appex/etc/apx.lic'; // replace your lic here
 $buffer = file_get_contents($lic_path);
 if (strlen($buffer) !== $lic_len) {
     echo("此程序只支持最新LotServer (2019-04-22)\n");
@@ -270,5 +270,5 @@ $licInfo{0x60} = pack('v', $year)[0];
 $licInfo{0x61} = pack('v', $year)[1];
 APX_ProtEncrypt($key, strlen($key), $key, strlen($key), $licInfo, $lic_len, $modified_lic);
 
-file_put_contents('out2.lic', $modified_lic);
+file_put_contents('out.lic', $modified_lic);
 view_lic($modified_lic);
