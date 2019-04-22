@@ -251,11 +251,18 @@ function view_lic($buffer)
 }
 
 
-$lic_path = 'apx_01_23.lic';
+$lic_path = 'apx_01_23.lic'; // replace your lic here
+
 $buffer = file_get_contents($lic_path);
+if (strlen($buffer) !== $lic_len) {
+    echo("此程序只支持最新LotServer (2019-04-22)\n");
+    echo("This program only supports the newest version of LotServer (2019-04-22)\n");
+    exit;
+}
+
 $licInfo = view_lic($buffer);
 
-echo " \n \nModified:\n";
+echo " \n \nModified: out.lic\n";
 
 
 $year = 2099;
