@@ -35,16 +35,15 @@ $lic_info = decode_lic($buffer, false);
 // hack it
 modify_mac($lic_info, $argv[1]);
 modify_expire($lic_info, 2099, 12, 31);
-echo "\nHexView:\n";
-hex_dump($lic_info);
 
 // encrypt and output
+$modified_lic = str_repeat(chr(0), $lic_len);
 APX_ProtEncrypt($key, strlen($key), $key, strlen($key), $lic_info, $lic_len, $modified_lic);
 file_put_contents('out.lic', $modified_lic);
+echo "\nHexView:\n";
+hex_dump($modified_lic);
 decode_lic($modified_lic);
-echo "\n----> Output: out.lic\n\n";
-
-
+echo "\n----> Output: out.lic";
 
 function decode_lic($buffer, $output = true)
 {
