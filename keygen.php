@@ -6,10 +6,6 @@
  * Time: 10:08:20
  */
 
-
-global $key, $lic_len;
-$key = 'apx-section1';
-$lic_len = 0xA0;
 if (php_sapi_name() === 'cli') {
     if ($argc <= 1) {
         die("
@@ -19,42 +15,84 @@ if (php_sapi_name() === 'cli') {
     ");
     }
     $mac = $argv[1];
+    $version = isset($argv[2]) ? intval($argv[2]) : 1;
+    $verbose = @$argv[2] === 'v' || @$argv[3] === 'v';
 } else {
     if (!isset($_GET['mac'])) {
         die("Please input a mac address.\n");
     }
     $mac = $_GET['mac'];
+    $version = isset($_GET['ver']) ? intval($_GET['ver']) : 1;
+    $verbose = false;
 }
 
 if (strlen($mac) !== 17) // 00:00:00:00:00:00
     die("Invalid mac address\n");
 
-$lic_path = '.template.lic';
+global $key, $lic_len;
+$key = 'apx-section1';
+
+switch ($version) {
+    case 0:
+        $lic_len = 0x98;
+        $lic_path = '.template_old.lic';
+        function Decrypt($Key, $KeyLen, $CipherText, $CipherTextLen, &$OutPlainText)
+        {
+            APX_ProtDecrypt($Key, $KeyLen, $Key, $KeyLen, $CipherText, $CipherTextLen, $OutPlainText);
+        }
+
+        function Encrypt($Key, $KeyLen, $PlainText, $PlainTextLen, &$OutCipherText)
+        {
+            APX_ProtEncrypt($Key, $KeyLen, $Key, $KeyLen, $PlainText, $PlainTextLen, $OutCipherText);
+        }
+
+        break;
+    case 1:
+        $lic_len = 0xA0;
+        $lic_path = '.template_3.11.20.10.lic';
+        function Decrypt($Key, $KeyLen, $CipherText, $CipherTextLen, &$OutPlainText)
+        {
+            APX_ProtDecrypt_New($Key, $KeyLen, $Key, $KeyLen, $CipherText, $CipherTextLen, $OutPlainText);
+        }
+
+        function Encrypt($Key, $KeyLen, $PlainText, $PlainTextLen, &$OutCipherText)
+        {
+            APX_ProtEncrypt_New($Key, $KeyLen, $Key, $KeyLen, $PlainText, $PlainTextLen, $OutCipherText);
+        }
+
+        break;
+    default:
+        die("undefined version\n");
+}
+
 if (!is_file($lic_path)) {
-    die("Please give a template lic file! \n");
+    die("please give a template lic! \n");
 }
 $buffer = file_get_contents($lic_path);
 if (strlen($buffer) !== $lic_len) {
-    echo("此程序只支持最新LotServer (2019-04-22)\n");
-    echo("This program only supports the newest version of LotServer (2019-04-22)\n");
+    echo("template lic error! \n");
     exit;
 }
 
 // decrypt old license
-$lic_info = decode_lic($buffer, false);
+$lic_info = decode_lic($buffer, $verbose);
+$verbose && hex_dump($lic_info);
 
 // hack it
 modify_mac($lic_info, $mac);
 modify_expire($lic_info, 2099, 12, 31);
+modify_hash($lic_info, $version);
 
 // encrypt and output
 $modified_lic = str_repeat(chr(0), $lic_len);
-APX_ProtEncrypt($key, strlen($key), $key, strlen($key), $lic_info, $lic_len, $modified_lic);
+Encrypt($key, strlen($key), $lic_info, $lic_len, $modified_lic);
 if (php_sapi_name() === 'cli') {
     file_put_contents('out.lic', $modified_lic); // 将MAC地址写到文件
     echo "\nHexView:\n";
     hex_dump($modified_lic);
-    decode_lic($modified_lic);
+    echo "\n";
+    $lic_info = decode_lic($modified_lic);
+    $verbose && hex_dump($lic_info);
     echo "\n----> Output: out.lic\n";
 } else {
     header('Content-type:application/octet-stream');
@@ -68,7 +106,7 @@ function decode_lic($buffer, $output = true)
 {
     global $key, $lic_len;
     $lic_info = str_repeat(chr(0), $lic_len);
-    APX_ProtDecrypt($key, strlen($key), $key, strlen($key), $buffer, $lic_len, $lic_info);
+    Decrypt($key, strlen($key), $buffer, $lic_len, $lic_info);
     // hex_dump($lic_info, $lic_len);
     /*
     8e 4c 15 ca e9 0d d0 23 da 24 13 41 69 09 1d 30
@@ -98,6 +136,13 @@ function decode_lic($buffer, $output = true)
     return $lic_info;
 }
 
+/**
+ * 修改到期时间
+ * @param $lic_info
+ * @param $year
+ * @param int $month
+ * @param int $day
+ */
 function modify_expire(&$lic_info, $year, $month = 12, $day = 31)
 {
     $lic_info{0x60} = pack('v', $year)[0];
@@ -106,6 +151,12 @@ function modify_expire(&$lic_info, $year, $month = 12, $day = 31)
     $lic_info{0x63} = chr($day);
 }
 
+/**
+ * 修改MAC地址
+ * @param $lic_info
+ * @param $mac
+ * @param string $ip
+ */
 function modify_mac(&$lic_info, $mac, $ip = '172.27.0.14')
 {
     global $key, $lic_len;
@@ -130,34 +181,34 @@ function modify_mac(&$lic_info, $mac, $ip = '172.27.0.14')
      * .rodata:0000000000485B80 dq offset aIpVti                        ; "ip_vti"
      */
 
-    {
-        // 计算MAC地址
-        $mac_arr = explode(':', $mac);
-        $mac_bin = '';
-        foreach ($mac_arr as $mac_i) {
-            $mac_bin .= chr(hexdec($mac_i));
-        }
-        // hex_dump($mac_bin);
 
-        $mac_hash = str_pad($mac_bin, 0x10, chr(0), STR_PAD_RIGHT);
-        for ($i = 0; $i < 0x10; $i++) {
-            $mac_hash[$i] = chr(ord($mac_hash[$i % 6]) + $i);
-        }
-        // hex_dump($mac_hash);
-
-        $license = '';
-        for ($i = 0; $i < 0x8; $i++) {
-            $calc = (ord($mac_hash[$i]) + ord($mac_hash[$i + 8])) & 0xFF;
-            $license .= sprintf("%02X", $calc);
-        }
-
-        $hash2 = hex2bin(str_pad(dechex(unpack('V', pack('N', ip2long($ip)))[1]), 0x8, '0', STR_PAD_LEFT));
-        $hash2{0} = chr(ord($hash2{0}) ^ ord($mac_hash{0}));
-        $hash2{1} = chr(ord($hash2{1}) ^ ord($mac_hash{1}));
-        $hash2{2} = chr(ord($hash2{2}) ^ ord($mac_hash{2}));
-        $hash2{3} = chr(ord($hash2{3}) ^ ord($mac_hash{3}));
-        $hash2 = dechex(unpack('V', $hash2)[1]);
+    // 计算MAC地址
+    $mac_arr = explode(':', $mac);
+    $mac_bin = '';
+    foreach ($mac_arr as $mac_i) {
+        $mac_bin .= chr(hexdec($mac_i));
     }
+    // hex_dump($mac_bin);
+
+    $mac_hash = str_pad($mac_bin, 0x10, chr(0), STR_PAD_RIGHT);
+    for ($i = 0; $i < 0x10; $i++) {
+        $mac_hash[$i] = chr(ord($mac_hash[$i % 6]) + $i);
+    }
+    // hex_dump($mac_hash);
+
+    $license = '';
+    for ($i = 0; $i < 0x8; $i++) {
+        $calc = (ord($mac_hash[$i]) + ord($mac_hash[$i + 8])) & 0xFF;
+        $license .= sprintf("%02X", $calc);
+    }
+
+    $hash2 = hex2bin(str_pad(dechex(unpack('V', pack('N', ip2long($ip)))[1]), 0x8, '0', STR_PAD_LEFT));
+    $hash2{0} = chr(ord($hash2{0}) ^ ord($mac_hash{0}));
+    $hash2{1} = chr(ord($hash2{1}) ^ ord($mac_hash{1}));
+    $hash2{2} = chr(ord($hash2{2}) ^ ord($mac_hash{2}));
+    $hash2{3} = chr(ord($hash2{3}) ^ ord($mac_hash{3}));
+    $hash2 = dechex(unpack('V', $hash2)[1]); // 用于lic绑定IP
+
 
     if (php_sapi_name() === 'cli') {
         // echo "(license " . $license . $hash2 . ")\n"; // 不校验IP ~~~
@@ -166,9 +217,24 @@ function modify_mac(&$lic_info, $mac, $ip = '172.27.0.14')
     for ($i = 0x40; $i < 0x50; $i++) {
         $lic_info{$i} = $license{$i - 0x40};
     }
+}
 
+/**
+ * 修改校验位
+ * @param $lic_info
+ * @param $version
+ */
+function modify_hash(&$lic_info, $version)
+{
+    global $key, $lic_len;
 
-    {
+    if ($version === 0) {
+        // 全是0, 干脆固定不改了
+//        $hash_ret = str_repeat(chr(0), 0x20);
+//        Decrypt($key, strlen($key), $lic_info, 0x20, $hash_ret);
+//        hex_dump($hash_ret);
+//        exit;
+    } elseif ($version === 1) {
         // 随机数
         /**
          * lic 的前面 0x20 字节是
@@ -176,9 +242,10 @@ function modify_mac(&$lic_info, $mac, $ip = '172.27.0.14')
          * 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
          * 加密后的结果
          */
-        // $hash_ret = str_repeat(chr(0), 0x20);
-        // APX_ProtDecrypt($key, strlen($key), $key, strlen($key), $lic_info, 0x20, $hash_ret);
-        // hex_dump($hash_ret);
+//        $hash_ret = str_repeat(chr(0), 0x20);
+//        Decrypt($key, strlen($key), $lic_info, 0x20, $hash_ret);
+//        hex_dump($hash_ret);
+//        exit;
         $tmp = $lic_info;
         // $hash = sprintf("%d", unpack('V', substr($lic_info, 0x98, 0x4))[1]);
         $hash = sprintf("%d", rand(0, 0x7FFFFFFF));
@@ -189,17 +256,18 @@ function modify_mac(&$lic_info, $mac, $ip = '172.27.0.14')
                 $tmp[$i] = chr(0);
         }
         $hash_ret = str_repeat(chr(0), 0x20);
-        APX_ProtEncrypt($key, strlen($key), $key, strlen($key), $tmp, 0x20, $hash_ret);
+        Encrypt($key, strlen($key), $tmp, 0x20, $hash_ret);
         // hex_dump($tmp);
         // hex_dump($hash_ret);
-    }
-    $lic_info{0x98} = pack('V', $hash)[0];
-    $lic_info{0x99} = pack('V', $hash)[1];
-    $lic_info{0x9A} = pack('V', $hash)[2];
-    $lic_info{0x9B} = pack('V', $hash)[3];
 
-    for ($i = 0; $i < 0x20; $i++) {
-        $lic_info{$i} = $hash_ret{$i};
+        $lic_info{0x98} = pack('V', $hash)[0];
+        $lic_info{0x99} = pack('V', $hash)[1];
+        $lic_info{0x9A} = pack('V', $hash)[2];
+        $lic_info{0x9B} = pack('V', $hash)[3];
+
+        for ($i = 0; $i < 0x20; $i++) {
+            $lic_info{$i} = $hash_ret{$i};
+        }
     }
 }
 
@@ -326,7 +394,17 @@ function APX_ProtUninitContext(&$ProtContext)
     return 0;
 }
 
-function APX_ProtDecrypt($Id, $IdLen, $Key, $KeyLen, $CipherText, $CipherTextLen, &$OutPlainText)
+/**
+ * Version >= 3.11.20.10
+ * @param string $Id
+ * @param int $IdLen
+ * @param string $Key
+ * @param int $KeyLen
+ * @param string $CipherText
+ * @param int $CipherTextLen
+ * @param string $OutPlainText
+ */
+function APX_ProtDecrypt_New($Id, $IdLen, $Key, $KeyLen, $CipherText, $CipherTextLen, &$OutPlainText)
 {
     $v8 = $CipherTextLen;
     $v7 = 0;
@@ -359,7 +437,17 @@ function APX_ProtDecrypt($Id, $IdLen, $Key, $KeyLen, $CipherText, $CipherTextLen
     APX_ProtUninitContext($ProtContext);
 }
 
-function APX_ProtEncrypt($Id, $IdLen, $Key, $KeyLen, $PlainText, $PlainTextLen, &$OutCipherText)
+/**
+ * Version >= 3.11.20.10
+ * @param string $Id
+ * @param int $IdLen
+ * @param string $Key
+ * @param int $KeyLen
+ * @param string $PlainText
+ * @param int $PlainTextLen
+ * @param string $OutCipherText
+ */
+function APX_ProtEncrypt_New($Id, $IdLen, $Key, $KeyLen, $PlainText, $PlainTextLen, &$OutCipherText)
 {
     $v8 = $PlainTextLen;
     $v7 = 0;
@@ -390,6 +478,100 @@ function APX_ProtEncrypt($Id, $IdLen, $Key, $KeyLen, $PlainText, $PlainTextLen, 
             $v9 += 4;
             $v8 -= 4;
         }
+    }
+    APX_ProtUninitContext($ProtContext);
+}
+
+/**
+ * 用于代码加解密以及 LotServer < 3.11.20.10 时lic加解密
+ * @param string $Id
+ * @param int $IdLen
+ * @param string $Key
+ * @param int $KeyLen
+ * @param string $CipherText
+ * @param int $CipherTextLen
+ * @param string $OutPlainText
+ */
+function APX_ProtDecrypt($Id, $IdLen, $Key, $KeyLen, $CipherText, $CipherTextLen, &$OutPlainText)
+{
+    $v7 = $CipherTextLen;
+    $v8 = $CipherText;
+    APX_ProtInitContext($Id, $IdLen, $Key, $KeyLen, $ProtContext);
+
+    for ($i = 0; $v7; $v7 -= 4) {
+        $v10 = 0;
+        $v11 = 0;
+        if ($v7) {
+            do {
+                $v13 = ord($v8{$i + $v11});
+                $v14 = _INT32(8 * $v11++);
+                $v10 = _INT32($v10 | ($v13 << $v14));
+            } while ($v11 < $v7 && $v11 <= 3);
+            $v15 = $i;
+            APX_ProtUpdateContext($ProtContext);
+            $v16 = _INT32($v10 - $ProtContext[0]);
+            $v17 = 0;
+            $v21 = $v15;
+            do {
+                $v18 = $v17++;
+                $OutPlainText{$i + $v18} = chr($v16 & 0xFF);
+                // var_dump(dechex(ord($OutPlainText{$i + $v18})));
+                $v16 >>= 8;
+            } while ($v17 < $v7 && $v17 <= 3);
+        } else {
+            $v20 = $i;
+            APX_ProtUpdateContext($ProtContext);
+            $v21 = $v20;
+        }
+        if ($v7 <= 4)
+            break;
+        $i = $v21 + 4;
+    }
+    APX_ProtUninitContext($ProtContext);
+}
+
+/**
+ * 用于代码加解密以及 LotServer < 3.11.20.10 时lic加解密
+ * @param string $Id
+ * @param int $IdLen
+ * @param string $Key
+ * @param int $KeyLen
+ * @param string $PlainText
+ * @param int $PlainTextLen
+ * @param string $OutCipherText
+ */
+function APX_ProtEncrypt($Id, $IdLen, $Key, $KeyLen, $PlainText, $PlainTextLen, &$OutCipherText)
+{
+    $v7 = $PlainTextLen;
+    $v8 = $PlainText;
+    APX_ProtInitContext($Id, $IdLen, $Key, $KeyLen, $ProtContext);
+    for ($i = 0; $v7; $v7 -= 4) {
+        $v10 = 0;
+        $v11 = 0;
+        if ($v7) {
+            do {
+                $v13 = ord($v8{$i + $v11});
+                $v14 = _INT32(8 * $v11++);
+                $v10 = _INT32($v10 | ($v13 << $v14));
+            } while ($v11 < $v7 && $v11 <= 3);
+            $v15 = $i;
+            APX_ProtUpdateContext($ProtContext);
+            $v16 = _INT32($ProtContext[0] + $v10);
+            $v17 = 0;
+            $v20 = $v15;
+            do {
+                $v18 = $v17++;
+                $OutCipherText{$i + $v18} = chr($v16 & 0xFF);;
+                $v16 >>= 8;
+            } while ($v17 < $v7 && $v17 <= 3);
+        } else {
+            $v19 = $i;
+            APX_ProtUpdateContext($ProtContext);
+            $v20 = $v19;
+        }
+        if ($v7 <= 4)
+            break;
+        $i = $v20 + 4;
     }
     APX_ProtUninitContext($ProtContext);
 }
